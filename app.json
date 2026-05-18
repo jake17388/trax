@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "trax",
+    "slug": "trax",
+    "scheme": "trax",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Trax uses your location to drop tracks and show them on the map.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Trax uses your location to drop tracks and show them on the map."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./public/icon.png",
+      "name": "Trax",
+      "shortName": "Trax",
+      "description": "Your life on a map.",
+      "themeColor": "#1A73E8",
+      "backgroundColor": "#FFFFFF",
+      "display": "standalone",
+      "orientation": "portrait"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-web-browser"
+    ]
+  }
+}
