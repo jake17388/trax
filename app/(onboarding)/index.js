@@ -4,6 +4,7 @@ import {
   StyleSheet, Alert, ActivityIndicator,
   KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { saveProfile } from '../../src/services/profile';
 import { colors, spacing, fontSizes } from '../../src/constants/theme';
 
@@ -13,29 +14,35 @@ const MONTHS = [
 ];
 
 export default function ProfileSetupScreen() {
+  const router = useRouter();
   const [name, setName] = useState('');
-  const [month, setMonth] = useState('');
+  const [month, setMonth] = useState('');   // '1'–'12' on native, month name on web
   const [day, setDay] = useState('');
   const [year, setYear] = useState('');
   const [loading, setLoading] = useState(false);
 
   function buildBirthday() {
     if (!month || !day || !year) return null;
-    const m = String(MONTHS.indexOf(month) + 1).padStart(2, '0');
-    const d = String(day).padStart(2, '0');
+    const monthIndex = Platform.OS === 'web'
+      ? MONTHS.indexOf(month) + 1
+      : parseInt(month);
+    const m = String(monthIndex).padStart(2, '0');
+    const d = String(parseInt(day)).padStart(2, '0');
     return `${year}-${m}-${d}`;
   }
 
   function validate() {
     if (!name.trim()) { Alert.alert('Please enter your name'); return false; }
-    if (!month || !day || !year) { Alert.alert('Please enter your birthday'); return false; }
-    const y = parseInt(year);
+    if (!month || !day || !year) { Alert.alert('Please complete your date of birth'); return false; }
+    const monthIndex = Platform.OS === 'web'
+      ? MONTHS.indexOf(month) + 1
+      : parseInt(month);
     const d = parseInt(day);
+    const y = parseInt(year);
+    if (monthIndex < 1 || monthIndex > 12) { Alert.alert('Please select a valid month'); return false; }
+    if (isNaN(d) || d < 1 || d > 31) { Alert.alert('Please enter a valid day (1–31)'); return false; }
     if (isNaN(y) || y < 1900 || y > new Date().getFullYear()) {
       Alert.alert('Please enter a valid year'); return false;
-    }
-    if (isNaN(d) || d < 1 || d > 31) {
-      Alert.alert('Please enter a valid day'); return false;
     }
     return true;
   }
@@ -45,12 +52,30 @@ export default function ProfileSetupScreen() {
     setLoading(true);
     try {
       await saveProfile({ name: name.trim(), birthday: buildBirthday() });
+      router.replace('/(tabs)');
     } catch (e) {
       Alert.alert('Error saving profile', e.message);
-    } finally {
       setLoading(false);
     }
   }
+
+  const inputStyle = {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.md,
+    paddingTop: 14,
+    paddingBottom: 14,
+    fontSize: fontSizes.md,
+    color: colors.text,
+    border: 'none',
+    outline: 'none',
+    width: '100%',
+    boxSizing: 'border-box',
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    fontFamily: 'inherit',
+  };
 
   return (
     <KeyboardAvoidingView
@@ -64,7 +89,6 @@ export default function ProfileSetupScreen() {
         </View>
 
         <View style={styles.form}>
-          {/* Name */}
           <Text style={styles.label}>Your Name</Text>
           <TextInput
             style={styles.input}
@@ -76,36 +100,45 @@ export default function ProfileSetupScreen() {
             onChangeText={setName}
           />
 
-          {/* Birthday */}
           <Text style={styles.label}>Date of Birth</Text>
           <View style={styles.birthdayRow}>
+
+            {/* Month */}
             <View style={styles.monthWrap}>
-              <TextInput
-                style={styles.input}
-                placeholder="Month"
-                placeholderTextColor={colors.textSecondary}
-                value={month}
-                onChangeText={(text) => {
-                  // auto-match month name as user types
-                  const match = MONTHS.find((m) =>
-                    m.toLowerCase().startsWith(text.toLowerCase())
-                  );
-                  setMonth(text.length > 0 && match ? match : text);
-                }}
-                onBlur={() => {
-                  const match = MONTHS.find((m) =>
-                    m.toLowerCase() === month.toLowerCase()
-                  );
-                  if (match) setMonth(match);
-                }}
-                autoCapitalize="words"
-                returnKeyType="next"
-              />
+              {Platform.OS === 'web' ? (
+                <select
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    color: month ? colors.text : colors.textSecondary,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="" disabled>Month</option>
+                  {MONTHS.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              ) : (
+                <TextInput
+                  style={styles.input}
+                  placeholder="MM"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  returnKeyType="next"
+                  value={month}
+                  onChangeText={setMonth}
+                />
+              )}
             </View>
+
+            {/* Day */}
             <View style={styles.dayWrap}>
               <TextInput
                 style={styles.input}
-                placeholder="Day"
+                placeholder="DD"
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="number-pad"
                 maxLength={2}
@@ -114,10 +147,12 @@ export default function ProfileSetupScreen() {
                 onChangeText={setDay}
               />
             </View>
+
+            {/* Year */}
             <View style={styles.yearWrap}>
               <TextInput
                 style={styles.input}
-                placeholder="Year"
+                placeholder="YYYY"
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="number-pad"
                 maxLength={4}
@@ -157,7 +192,15 @@ const styles = StyleSheet.create({
   logo: { fontSize: 32, fontWeight: '800', color: colors.primary, letterSpacing: -1, marginBottom: spacing.sm },
   title: { fontSize: fontSizes.xl, fontWeight: '700', color: colors.text, lineHeight: 34 },
   form: { marginBottom: spacing.xl },
-  label: { fontSize: fontSizes.sm, fontWeight: '600', color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.xs, textTransform: 'uppercase', letterSpacing: 0.5 },
+  label: {
+    fontSize: fontSizes.sm,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   input: {
     backgroundColor: colors.surface,
     borderRadius: 12,
