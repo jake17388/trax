@@ -1,3 +1,5 @@
+export const unstable_settings = { ssr: false };
+
 import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import TraxMap from '../../src/components/TraxMap';
