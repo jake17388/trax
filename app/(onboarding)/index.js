@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity,
+  View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, Alert, ActivityIndicator,
   KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
@@ -13,16 +13,62 @@ const MONTHS = [
   'July','August','September','October','November','December',
 ];
 
+async function searchPlaces(query) {
+  const url =
+    `https://nominatim.openstreetmap.org/search` +
+    `?q=${encodeURIComponent(query)}&format=json&limit=6&addressdetails=1`;
+  const res = await fetch(url, {
+    headers: { 'Accept-Language': 'en', 'User-Agent': 'TraxApp/1.0' },
+  });
+  const data = await res.json();
+  return data.map((item) => ({
+    id: String(item.place_id),
+    label: item.display_name,
+    lat: parseFloat(item.lat),
+    lng: parseFloat(item.lon),
+  }));
+}
+
 export default function ProfileSetupScreen() {
   const router = useRouter();
+
   const [name, setName] = useState('');
-  const [month, setMonth] = useState('');   // '1'–'12' on native, month name on web
+  const [month, setMonth] = useState('');
   const [day, setDay] = useState('');
   const [year, setYear] = useState('');
-  const [loading, setLoading] = useState(false);
+
+  const [placeQuery, setPlaceQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+  const searchTimer = useRef(null);
+
+  function handlePlaceSearch(text) {
+    setPlaceQuery(text);
+    setSelectedPlace(null);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (text.length < 2) { setSuggestions([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        setSuggestions(await searchPlaces(text));
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 350);
+  }
+
+  function selectPlace(place) {
+    setSelectedPlace(place);
+    setPlaceQuery(place.label);
+    setSuggestions([]);
+  }
 
   function buildBirthday() {
-    if (!month || !day || !year) return null;
     const monthIndex = Platform.OS === 'web'
       ? MONTHS.indexOf(month) + 1
       : parseInt(month);
@@ -32,34 +78,46 @@ export default function ProfileSetupScreen() {
   }
 
   function validate() {
-    if (!name.trim()) { Alert.alert('Please enter your name'); return false; }
-    if (!month || !day || !year) { Alert.alert('Please complete your date of birth'); return false; }
+    if (!name.trim()) { Alert.alert('Missing info', 'Please enter your name.'); return false; }
     const monthIndex = Platform.OS === 'web'
       ? MONTHS.indexOf(month) + 1
       : parseInt(month);
     const d = parseInt(day);
     const y = parseInt(year);
-    if (monthIndex < 1 || monthIndex > 12) { Alert.alert('Please select a valid month'); return false; }
-    if (isNaN(d) || d < 1 || d > 31) { Alert.alert('Please enter a valid day (1–31)'); return false; }
+    if (!month || monthIndex < 1 || monthIndex > 12) {
+      Alert.alert('Missing info', 'Please select a valid birth month.'); return false;
+    }
+    if (isNaN(d) || d < 1 || d > 31) {
+      Alert.alert('Missing info', 'Please enter a valid birth day (1–31).'); return false;
+    }
     if (isNaN(y) || y < 1900 || y > new Date().getFullYear()) {
-      Alert.alert('Please enter a valid year'); return false;
+      Alert.alert('Missing info', 'Please enter a valid birth year.'); return false;
+    }
+    if (!selectedPlace) {
+      Alert.alert('Missing info', 'Please search for and select your birthplace.'); return false;
     }
     return true;
   }
 
   async function handleSave() {
     if (!validate()) return;
-    setLoading(true);
+    setSaving(true);
     try {
-      await saveProfile({ name: name.trim(), birthday: buildBirthday() });
+      await saveProfile({
+        name: name.trim(),
+        birthday: buildBirthday(),
+        birth_place_name: selectedPlace.label,
+        birth_lat: selectedPlace.lat,
+        birth_lng: selectedPlace.lng,
+      });
       router.replace('/(tabs)');
     } catch (e) {
-      Alert.alert('Error saving profile', e.message);
-      setLoading(false);
+      Alert.alert('Error', e.message);
+      setSaving(false);
     }
   }
 
-  const inputStyle = {
+  const webSelectStyle = {
     backgroundColor: colors.surface,
     borderRadius: 12,
     paddingLeft: spacing.md,
@@ -67,7 +125,7 @@ export default function ProfileSetupScreen() {
     paddingTop: 14,
     paddingBottom: 14,
     fontSize: fontSizes.md,
-    color: colors.text,
+    color: month ? colors.text : colors.textSecondary,
     border: 'none',
     outline: 'none',
     width: '100%',
@@ -75,6 +133,7 @@ export default function ProfileSetupScreen() {
     appearance: 'none',
     WebkitAppearance: 'none',
     fontFamily: 'inherit',
+    cursor: 'pointer',
   };
 
   return (
@@ -82,13 +141,19 @@ export default function ProfileSetupScreen() {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.logo}>trax</Text>
           <Text style={styles.title}>Welcome! Tell us{'\n'}about yourself.</Text>
         </View>
 
         <View style={styles.form}>
+
+          {/* Name */}
           <Text style={styles.label}>Your Name</Text>
           <TextInput
             style={styles.input}
@@ -100,20 +165,16 @@ export default function ProfileSetupScreen() {
             onChangeText={setName}
           />
 
+          {/* Birthday */}
           <Text style={styles.label}>Date of Birth</Text>
           <View style={styles.birthdayRow}>
 
-            {/* Month */}
             <View style={styles.monthWrap}>
               {Platform.OS === 'web' ? (
                 <select
                   value={month}
                   onChange={(e) => setMonth(e.target.value)}
-                  style={{
-                    ...inputStyle,
-                    color: month ? colors.text : colors.textSecondary,
-                    cursor: 'pointer',
-                  }}
+                  style={webSelectStyle}
                 >
                   <option value="" disabled>Month</option>
                   {MONTHS.map((m) => (
@@ -127,14 +188,12 @@ export default function ProfileSetupScreen() {
                   placeholderTextColor={colors.textSecondary}
                   keyboardType="number-pad"
                   maxLength={2}
-                  returnKeyType="next"
                   value={month}
                   onChangeText={setMonth}
                 />
               )}
             </View>
 
-            {/* Day */}
             <View style={styles.dayWrap}>
               <TextInput
                 style={styles.input}
@@ -142,13 +201,11 @@ export default function ProfileSetupScreen() {
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="number-pad"
                 maxLength={2}
-                returnKeyType="next"
                 value={day}
                 onChangeText={setDay}
               />
             </View>
 
-            {/* Year */}
             <View style={styles.yearWrap}>
               <TextInput
                 style={styles.input}
@@ -156,21 +213,66 @@ export default function ProfileSetupScreen() {
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="number-pad"
                 maxLength={4}
-                returnKeyType="done"
-                onSubmitEditing={handleSave}
                 value={year}
                 onChangeText={setYear}
               />
             </View>
           </View>
+
+          {/* Birthplace */}
+          <Text style={styles.label}>Where Were You Born?</Text>
+          <View style={styles.placeSearchWrap}>
+            <TextInput
+              style={[styles.input, selectedPlace && styles.inputSelected]}
+              placeholder="Search for a city or town…"
+              placeholderTextColor={colors.textSecondary}
+              value={placeQuery}
+              onChangeText={handlePlaceSearch}
+              autoCorrect={false}
+            />
+            {searchLoading && (
+              <ActivityIndicator
+                style={styles.searchSpinner}
+                size="small"
+                color={colors.primary}
+              />
+            )}
+          </View>
+
+          {suggestions.length > 0 && (
+            <View style={styles.suggestionList}>
+              {suggestions.map((item, index) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.suggestionItem,
+                    index < suggestions.length - 1 && styles.suggestionBorder,
+                  ]}
+                  onPress={() => selectPlace(item)}
+                >
+                  <Text style={styles.suggestionText} numberOfLines={2}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {selectedPlace && (
+            <Text style={styles.selectedHint}>
+              ✓ {selectedPlace.label}
+            </Text>
+          )}
+
         </View>
 
+        {/* Submit */}
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+          style={[styles.button, saving && styles.buttonDisabled]}
           onPress={handleSave}
-          disabled={loading}
+          disabled={saving}
         >
-          {loading
+          {saving
             ? <ActivityIndicator color="#fff" />
             : <Text style={styles.buttonText}>Let's Go</Text>
           }
@@ -189,8 +291,19 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xl,
   },
   header: { marginBottom: spacing.xl },
-  logo: { fontSize: 32, fontWeight: '800', color: colors.primary, letterSpacing: -1, marginBottom: spacing.sm },
-  title: { fontSize: fontSizes.xl, fontWeight: '700', color: colors.text, lineHeight: 34 },
+  logo: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: -1,
+    marginBottom: spacing.sm,
+  },
+  title: {
+    fontSize: fontSizes.xl,
+    fontWeight: '700',
+    color: colors.text,
+    lineHeight: 34,
+  },
   form: { marginBottom: spacing.xl },
   label: {
     fontSize: fontSizes.sm,
@@ -209,10 +322,47 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.md,
     color: colors.text,
   },
+  inputSelected: {
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
   birthdayRow: { flexDirection: 'row', gap: spacing.sm },
   monthWrap: { flex: 2 },
   dayWrap: { flex: 1 },
   yearWrap: { flex: 1.2 },
+  placeSearchWrap: { position: 'relative' },
+  searchSpinner: {
+    position: 'absolute',
+    right: 14,
+    top: 14,
+  },
+  suggestionList: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    overflow: 'hidden',
+  },
+  suggestionItem: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 13,
+  },
+  suggestionBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
+  },
+  suggestionText: {
+    fontSize: fontSizes.sm,
+    color: colors.text,
+    lineHeight: 18,
+  },
+  selectedHint: {
+    marginTop: spacing.xs,
+    fontSize: fontSizes.sm,
+    color: colors.primary,
+    fontWeight: '500',
+  },
   button: {
     backgroundColor: colors.primary,
     borderRadius: 12,
