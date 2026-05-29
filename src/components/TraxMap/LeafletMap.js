@@ -19,20 +19,35 @@ const birthIcon = L.divIcon({
   popupAnchor: [0, -12],
 });
 
-function FlyTo({ location }) {
+// During scrubbing: instant setView so animations don't stack.
+// On initial load / event tap: smooth flyTo.
+function FlyTo({ location, animate }) {
   const map = useMap();
   const prev = useRef(null);
+
   useEffect(() => {
     if (!location) return;
-    const key = `${location.lat},${location.lng}`;
+    const key = `${location.lat.toFixed(4)},${location.lng.toFixed(4)}`;
     if (key === prev.current) return;
     prev.current = key;
-    map.flyTo([location.lat, location.lng], map.getZoom() < 4 ? 6 : map.getZoom(), { duration: 0.6 });
-  }, [location]);
+
+    if (animate) {
+      map.flyTo([location.lat, location.lng], Math.max(map.getZoom(), 5), { duration: 1.2 });
+    } else {
+      map.stop();
+      map.setView([location.lat, location.lng], map.getZoom(), { animate: false });
+    }
+  }, [location, animate]);
+
   return null;
 }
 
-export default function LeafletMap({ polylinePoints = [], eventMarkers = [], flyTo = null }) {
+export default function LeafletMap({
+  polylinePoints = [],
+  eventMarkers = [],
+  flyTo = null,
+  animateFly = true,
+}) {
   const lineCoords = polylinePoints.map((p) => [p.lat, p.lng]);
 
   return (
@@ -41,6 +56,11 @@ export default function LeafletMap({ polylinePoints = [], eventMarkers = [], fly
       zoom={2}
       style={{ height: '100%', width: '100%' }}
       zoomControl={false}
+      // Smoother zoom: smaller snap = more intermediate zoom levels
+      zoomSnap={0.25}
+      zoomDelta={0.5}
+      // More pixels needed per zoom level = slower, smoother scroll-to-zoom
+      wheelPxPerZoomLevel={100}
     >
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
@@ -50,7 +70,7 @@ export default function LeafletMap({ polylinePoints = [], eventMarkers = [], fly
       {lineCoords.length >= 2 && (
         <Polyline
           positions={lineCoords}
-          pathOptions={{ color: '#FF3B30', weight: 2.5, opacity: 0.8 }}
+          pathOptions={{ color: '#FF3B30', weight: 2.5, opacity: 0.85 }}
         />
       )}
 
@@ -69,12 +89,12 @@ export default function LeafletMap({ polylinePoints = [], eventMarkers = [], fly
                 })}
               </div>
             )}
-            <div style={{ fontSize: 12, color: '#666' }}>{marker.place_name}</div>
+            <div style={{ fontSize: 12, color: '#888' }}>{marker.place_name}</div>
           </Popup>
         </Marker>
       ))}
 
-      {flyTo && <FlyTo location={flyTo} />}
+      {flyTo && <FlyTo location={flyTo} animate={animateFly} />}
     </MapContainer>
   );
 }

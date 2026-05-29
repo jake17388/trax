@@ -1,10 +1,18 @@
-import { useRef, useCallback } from 'react';
+import { useRef } from 'react';
 import { View, Text, PanResponder, StyleSheet, Platform } from 'react-native';
 import { colors, fontSizes, spacing } from '../constants/theme';
 
 const THUMB_SIZE = 22;
 
-export default function TimelineSlider({ value, onChange, minLabel, maxLabel, currentLabel }) {
+export default function TimelineSlider({
+  value,
+  onChange,
+  onScrubStart,
+  onScrubEnd,
+  minLabel,
+  maxLabel,
+  currentLabel,
+}) {
   const trackWidth = useRef(0);
 
   const panResponder = useRef(
@@ -12,21 +20,18 @@ export default function TimelineSlider({ value, onChange, minLabel, maxLabel, cu
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt) => {
+        onScrubStart?.();
         if (trackWidth.current === 0) return;
-        const x = evt.nativeEvent.locationX;
-        onChange(Math.max(0, Math.min(1, x / trackWidth.current)));
+        onChange(Math.max(0, Math.min(1, evt.nativeEvent.locationX / trackWidth.current)));
       },
       onPanResponderMove: (evt) => {
         if (trackWidth.current === 0) return;
-        const x = evt.nativeEvent.locationX;
-        onChange(Math.max(0, Math.min(1, x / trackWidth.current)));
+        onChange(Math.max(0, Math.min(1, evt.nativeEvent.locationX / trackWidth.current)));
       },
+      onPanResponderRelease: () => onScrubEnd?.(),
+      onPanResponderTerminate: () => onScrubEnd?.(),
     })
   ).current;
-
-  const onLayout = useCallback((e) => {
-    trackWidth.current = e.nativeEvent.layout.width;
-  }, []);
 
   if (Platform.OS === 'web') {
     return (
@@ -38,12 +43,11 @@ export default function TimelineSlider({ value, onChange, minLabel, maxLabel, cu
           max={1000}
           value={Math.round(value * 1000)}
           onChange={(e) => onChange(parseInt(e.target.value) / 1000)}
-          style={{
-            width: '100%',
-            accentColor: colors.accent,
-            cursor: 'pointer',
-            margin: '6px 0',
-          }}
+          onMouseDown={() => onScrubStart?.()}
+          onMouseUp={() => onScrubEnd?.()}
+          onTouchStart={() => onScrubStart?.()}
+          onTouchEnd={() => onScrubEnd?.()}
+          style={{ width: '100%', accentColor: colors.accent, cursor: 'pointer', margin: '6px 0' }}
         />
         <View style={styles.endLabels}>
           <Text style={styles.endLabel}>{minLabel}</Text>
@@ -53,14 +57,12 @@ export default function TimelineSlider({ value, onChange, minLabel, maxLabel, cu
     );
   }
 
-  const thumbLeft = `${value * 100}%`;
-
   return (
     <View style={styles.container}>
       <Text style={styles.currentLabel}>{currentLabel}</Text>
       <View
         style={styles.trackWrap}
-        onLayout={onLayout}
+        onLayout={(e) => { trackWidth.current = e.nativeEvent.layout.width; }}
         {...panResponder.panHandlers}
       >
         <View style={styles.track} />
@@ -89,44 +91,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
-  trackWrap: {
-    height: THUMB_SIZE,
-    justifyContent: 'center',
-  },
+  trackWrap: { height: THUMB_SIZE, justifyContent: 'center' },
   track: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#E5E5EA',
+    position: 'absolute', left: 0, right: 0,
+    height: 4, borderRadius: 2, backgroundColor: '#E5E5EA',
   },
   fill: {
-    position: 'absolute',
-    left: 0,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.accent,
+    position: 'absolute', left: 0,
+    height: 4, borderRadius: 2, backgroundColor: colors.accent,
   },
   thumb: {
     position: 'absolute',
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
+    width: THUMB_SIZE, height: THUMB_SIZE,
     borderRadius: THUMB_SIZE / 2,
     backgroundColor: colors.accent,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
     elevation: 4,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25, shadowRadius: 4,
   },
-  endLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  endLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-  },
+  endLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  endLabel: { fontSize: 11, color: colors.textSecondary },
 });

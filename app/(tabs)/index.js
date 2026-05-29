@@ -22,7 +22,7 @@ function interpolateLocation(points, fraction) {
     const t1 = new Date(points[i].event_date).getTime();
     const t2 = new Date(points[i + 1].event_date).getTime();
     if (target >= t1 && target <= t2) {
-      const t = (t2 === t1) ? 0 : (target - t1) / (t2 - t1);
+      const t = t2 === t1 ? 0 : (target - t1) / (t2 - t1);
       return {
         lat: points[i].lat + t * (points[i + 1].lat - points[i].lat),
         lng: points[i].lng + t * (points[i + 1].lng - points[i].lng),
@@ -47,7 +47,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const [profile, setProfile] = useState(null);
   const [events, setEvents] = useState([]);
-  const [sliderValue, setSliderValue] = useState(1); // start at present
+  const [sliderValue, setSliderValue] = useState(1);
+  const [isScrubbing, setIsScrubbing] = useState(false);
 
   async function load() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -58,11 +59,8 @@ export default function HomeScreen() {
   }
 
   useEffect(() => { load(); }, []);
-
-  // Reload events whenever the tab comes back into focus (e.g. after adding one)
   useFocusEffect(useCallback(() => { load(); }, []));
 
-  // All points: birth location first, then life events sorted by date
   const allPoints = profile ? [
     {
       id: 'birth',
@@ -84,13 +82,18 @@ export default function HomeScreen() {
     : '';
 
   return (
+    // position: 'relative' is required on web so that absoluteFill children
+    // (the map) are positioned relative to this container, not the page root.
     <View style={styles.container}>
+
       <TraxMap
         polylinePoints={allPoints}
         eventMarkers={allPoints}
         flyTo={flyTo}
+        animateFly={!isScrubbing}
       />
 
+      {/* All overlays need zIndex > Leaflet's internal layers (~600) */}
       {profile && (
         <View style={styles.greeting}>
           <Text style={styles.greetingText}>Hello, {profile.name}</Text>
@@ -109,6 +112,8 @@ export default function HomeScreen() {
           <TimelineSlider
             value={sliderValue}
             onChange={setSliderValue}
+            onScrubStart={() => setIsScrubbing(true)}
+            onScrubEnd={() => setIsScrubbing(false)}
             minLabel={birthdayLabel(profile.birthday)}
             maxLabel="Today"
             currentLabel={currentLabel}
@@ -120,9 +125,13 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: {
+    flex: 1,
+    position: 'relative', // required on web for absoluteFill children
+  },
   greeting: {
     position: 'absolute',
+    zIndex: 1000,
     top: 56,
     left: spacing.lg,
     right: spacing.lg,
@@ -134,7 +143,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 1000,
   },
   greetingText: {
     fontSize: fontSizes.md,
@@ -143,13 +152,14 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
+    zIndex: 1000,
     bottom: 130,
     alignSelf: 'center',
     backgroundColor: colors.primary,
     paddingHorizontal: 24,
     paddingVertical: 13,
     borderRadius: 26,
-    elevation: 4,
+    elevation: 1000,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -158,13 +168,14 @@ const styles = StyleSheet.create({
   fabText: { color: '#fff', fontSize: fontSizes.md, fontWeight: '600' },
   timeline: {
     position: 'absolute',
+    zIndex: 1000,
     bottom: 0,
     left: 0,
     right: 0,
+    elevation: 1000,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 8,
   },
 });
