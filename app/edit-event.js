@@ -1,25 +1,47 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, Alert, ActivityIndicator, Platform, KeyboardAvoidingView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { addEvent } from '../src/services/events';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { getEvent, updateEvent } from '../src/services/events';
 import PlaceSearch from '../src/components/PlaceSearch';
 import { colors, spacing, fontSizes } from '../src/constants/theme';
 
-export default function AddEventScreen() {
+export default function EditEventScreen() {
   const router = useRouter();
+  const { id } = useLocalSearchParams();
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState(null);
 
-  // Web uses a single date string; native uses three numeric fields
+  // Web: single 'YYYY-MM-DD' string; native: three fields
   const [dateValue, setDateValue] = useState('');
   const [month, setMonth] = useState('');
   const [day, setDay] = useState('');
   const [year, setYear] = useState('');
+
+  useEffect(() => {
+    getEvent(id)
+      .then((e) => {
+        setTitle(e.title);
+        setNotes(e.notes ?? '');
+        setSelectedPlace({ label: e.place_name, lat: e.lat, lng: e.lng });
+
+        // Parse YYYY-MM-DD for both platforms
+        setDateValue(e.event_date);
+        const [y, m, d] = e.event_date.split('-');
+        setYear(y);
+        setMonth(String(parseInt(m)));
+        setDay(String(parseInt(d)));
+      })
+      .catch(() => Alert.alert('Error', 'Could not load event.'))
+      .finally(() => setLoading(false));
+  }, [id]);
 
   function buildDate() {
     if (Platform.OS === 'web') return dateValue || null;
@@ -39,7 +61,7 @@ export default function AddEventScreen() {
     if (!validate()) return;
     setSaving(true);
     try {
-      await addEvent({
+      await updateEvent(id, {
         title: title.trim(),
         event_date: buildDate(),
         place_name: selectedPlace.label,
@@ -52,6 +74,14 @@ export default function AddEventScreen() {
       Alert.alert('Error', e.message);
       setSaving(false);
     }
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
   }
 
   return (
@@ -95,7 +125,9 @@ export default function AddEventScreen() {
         )}
 
         <Text style={styles.label}>Location</Text>
+        {/* Key forces PlaceSearch to remount with the pre-loaded selection */}
         <PlaceSearch
+          key={selectedPlace?.label}
           selected={selectedPlace}
           onSelect={setSelectedPlace}
           placeholder="Search for a city or place…"
@@ -117,7 +149,7 @@ export default function AddEventScreen() {
           onPress={handleSave}
           disabled={saving}
         >
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save Event</Text>}
+          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save Changes</Text>}
         </TouchableOpacity>
 
       </ScrollView>
@@ -143,6 +175,7 @@ const webDateStyle = {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   container: { padding: spacing.lg, paddingBottom: 60 },
   label: {
     fontSize: fontSizes.sm, fontWeight: '600', color: colors.textSecondary,

@@ -28,6 +28,16 @@ export async function addEvent({ title, event_date, place_name, lat, lng, notes 
   return data;
 }
 
+export async function getEvent(id) {
+  const { data, error } = await supabase
+    .from('life_events')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function updateEvent(id, fields) {
   const { error } = await supabase
     .from('life_events')

@@ -53,12 +53,11 @@ export default function RootLayout() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen
         name="add-event"
-        options={{
-          presentation: 'modal',
-          headerShown: true,
-          title: 'Add Life Event',
-          headerBackTitle: 'Back',
-        }}
+        options={{ presentation: 'modal', headerShown: true, title: 'Add Life Event', headerBackTitle: 'Back' }}
+      />
+      <Stack.Screen
+        name="edit-event"
+        options={{ presentation: 'modal', headerShown: true, title: 'Edit Event', headerBackTitle: 'Back' }}
       />
     </Stack>
   );

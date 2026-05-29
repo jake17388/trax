@@ -53,7 +53,11 @@ export default function EventsScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => router.push(`/edit-event?id=${item.id}`)}
+            activeOpacity={0.7}
+          >
             <View style={styles.dot} />
             <View style={styles.cardContent}>
               <Text style={styles.cardTitle}>{item.title}</Text>
@@ -70,7 +74,7 @@ export default function EventsScreen() {
             >
               <Text style={styles.deleteText}>✕</Text>
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         )}
       />
       <TouchableOpacity style={styles.fab} onPress={() => router.push('/add-event')}>
