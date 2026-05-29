@@ -1,35 +1,41 @@
 import { useRef, useEffect } from 'react';
 import { StyleSheet } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
-import { colors } from '../../constants/theme';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 
-export default function TraxMap({ tracks, userLocation }) {
+export default function TraxMap({ polylinePoints = [], eventMarkers = [], flyTo = null }) {
   const mapRef = useRef(null);
 
   useEffect(() => {
-    if (userLocation && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      });
-    }
-  }, [userLocation]);
+    if (!flyTo || !mapRef.current) return;
+    mapRef.current.animateToRegion({
+      latitude: flyTo.lat,
+      longitude: flyTo.lng,
+      latitudeDelta: 2,
+      longitudeDelta: 2,
+    }, 600);
+  }, [flyTo]);
 
   return (
     <MapView
       ref={mapRef}
       style={StyleSheet.absoluteFill}
-      showsUserLocation
       initialRegion={{ latitude: 20, longitude: 0, latitudeDelta: 100, longitudeDelta: 100 }}
     >
-      {tracks.map((track) => (
+      {polylinePoints.length >= 2 && (
+        <Polyline
+          coordinates={polylinePoints.map((p) => ({ latitude: p.lat, longitude: p.lng }))}
+          strokeColor="#FF3B30"
+          strokeWidth={2.5}
+        />
+      )}
+
+      {eventMarkers.map((marker, i) => (
         <Marker
-          key={track.id}
-          coordinate={track.coordinate}
-          title={track.title}
-          pinColor={colors.trackPin}
+          key={marker.id ?? i}
+          coordinate={{ latitude: marker.lat, longitude: marker.lng }}
+          title={marker.title}
+          description={marker.place_name}
+          pinColor="#FF3B30"
         />
       ))}
     </MapView>

@@ -4,38 +4,32 @@ import { supabase } from '../src/lib/supabase';
 import { getProfile } from '../src/services/profile';
 
 export default function RootLayout() {
-  const [session, setSession] = useState(undefined);       // undefined = loading
-  const [profileComplete, setProfileComplete] = useState(undefined); // undefined = not yet checked
+  const [session, setSession] = useState(undefined);
+  const [profileComplete, setProfileComplete] = useState(undefined);
   const router = useRouter();
   const segments = useSegments();
 
-  // Track auth state
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      setProfileComplete(undefined); // re-check profile on auth change
+      setProfileComplete(undefined);
     });
     return () => subscription.unsubscribe();
   }, []);
 
-  // Check profile whenever session (user) changes
+  // Re-check profile on session change OR whenever the user navigates to a new
+  // route group — this is what makes Let's Go work after saving the profile.
   useEffect(() => {
-    if (!session) {
-      setProfileComplete(undefined);
-      return;
-    }
+    if (!session) { setProfileComplete(undefined); return; }
     getProfile(session.user.id)
       .then((profile) => setProfileComplete(!!profile?.name))
       .catch(() => setProfileComplete(false));
-  }, [session?.user?.id]);
+  }, [session?.user?.id, segments[0]]);
 
-  // Route based on auth + profile state
   useEffect(() => {
     if (session === undefined) return;
-    if (session && profileComplete === undefined) return; // still checking profile
+    if (session && profileComplete === undefined) return;
 
     const inAuth = segments[0] === '(auth)';
     const inOnboarding = segments[0] === '(onboarding)';
@@ -49,9 +43,23 @@ export default function RootLayout() {
     }
   }, [session, profileComplete, segments]);
 
-  // Avoid flash while loading
   if (session === undefined) return null;
   if (session && profileComplete === undefined) return null;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(onboarding)" />
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen
+        name="add-event"
+        options={{
+          presentation: 'modal',
+          headerShown: true,
+          title: 'Add Life Event',
+          headerBackTitle: 'Back',
+        }}
+      />
+    </Stack>
+  );
 }

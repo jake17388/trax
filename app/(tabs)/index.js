@@ -1,76 +1,126 @@
 export const unstable_settings = { ssr: false };
 
-import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import TraxMap from '../../src/components/TraxMap';
-import { useLocation } from '../../src/hooks/useLocation';
-import { getTracks, saveTrack } from '../../src/services/storage';
-import { getProfile } from '../../src/services/profile';
+import TimelineSlider from '../../src/components/TimelineSlider';
 import { supabase } from '../../src/lib/supabase';
+import { getProfile } from '../../src/services/profile';
+import { getMyEvents } from '../../src/services/events';
 import { colors, spacing, fontSizes } from '../../src/constants/theme';
 
-export default function MapScreen() {
-  const { location, error } = useLocation();
-  const [tracks, setTracks] = useState([]);
-  const [userName, setUserName] = useState('');
+function interpolateLocation(points, fraction) {
+  if (!points || points.length === 0) return null;
+  const birthTime = new Date(points[0].event_date).getTime();
+  const nowTime = Date.now();
+  const target = birthTime + fraction * (nowTime - birthTime);
 
-  useEffect(() => {
-    (async () => setTracks(await getTracks()))();
-  }, []);
+  if (target <= birthTime) return { lat: points[0].lat, lng: points[0].lng };
 
-  useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const profile = await getProfile(user.id);
-      if (profile?.name) setUserName(profile.name);
-    })();
-  }, []);
-
-  async function dropTrack() {
-    if (!location) {
-      Alert.alert('No location', 'Still waiting for your location…');
-      return;
+  for (let i = 0; i < points.length - 1; i++) {
+    const t1 = new Date(points[i].event_date).getTime();
+    const t2 = new Date(points[i + 1].event_date).getTime();
+    if (target >= t1 && target <= t2) {
+      const t = (t2 === t1) ? 0 : (target - t1) / (t2 - t1);
+      return {
+        lat: points[i].lat + t * (points[i + 1].lat - points[i].lat),
+        lng: points[i].lng + t * (points[i + 1].lng - points[i].lng),
+      };
     }
-    const track = {
-      id: Date.now().toString(),
-      title: `Track — ${new Date().toLocaleDateString()}`,
-      coordinate: { latitude: location.latitude, longitude: location.longitude },
-      createdAt: new Date().toISOString(),
-    };
-    await saveTrack(track);
-    setTracks((prev) => [...prev, track]);
+  }
+  const last = points[points.length - 1];
+  return { lat: last.lat, lng: last.lng };
+}
+
+function labelFromFraction(birthday, fraction) {
+  const birthTime = new Date(birthday).getTime();
+  const target = new Date(birthTime + fraction * (Date.now() - birthTime));
+  return target.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+function birthdayLabel(birthday) {
+  return new Date(birthday).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+export default function HomeScreen() {
+  const router = useRouter();
+  const [profile, setProfile] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [sliderValue, setSliderValue] = useState(1); // start at present
+
+  async function load() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const [p, e] = await Promise.all([getProfile(user.id), getMyEvents()]);
+    setProfile(p);
+    setEvents(e);
   }
 
-  if (error) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
-    );
-  }
+  useEffect(() => { load(); }, []);
+
+  // Reload events whenever the tab comes back into focus (e.g. after adding one)
+  useFocusEffect(useCallback(() => { load(); }, []));
+
+  // All points: birth location first, then life events sorted by date
+  const allPoints = profile ? [
+    {
+      id: 'birth',
+      event_date: profile.birthday,
+      lat: profile.birth_lat,
+      lng: profile.birth_lng,
+      title: 'Born here',
+      place_name: profile.birth_place_name,
+    },
+    ...events,
+  ] : [];
+
+  const flyTo = allPoints.length > 0
+    ? interpolateLocation(allPoints, sliderValue)
+    : null;
+
+  const currentLabel = profile
+    ? labelFromFraction(profile.birthday, sliderValue)
+    : '';
 
   return (
     <View style={styles.container}>
-      <TraxMap tracks={[]} userLocation={null} />
+      <TraxMap
+        polylinePoints={allPoints}
+        eventMarkers={allPoints}
+        flyTo={flyTo}
+      />
 
-      <View style={styles.greeting}>
-        <Text style={styles.greetingText}>
-          {userName ? `Hello, ${userName}` : 'Hello'}
-        </Text>
-      </View>
+      {profile && (
+        <View style={styles.greeting}>
+          <Text style={styles.greetingText}>Hello, {profile.name}</Text>
+        </View>
+      )}
 
-      <TouchableOpacity style={styles.fab} onPress={dropTrack}>
-        <Text style={styles.fabText}>+ Drop Track</Text>
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/add-event')}
+      >
+        <Text style={styles.fabText}>+ Add Event</Text>
       </TouchableOpacity>
+
+      {profile && (
+        <View style={styles.timeline}>
+          <TimelineSlider
+            value={sliderValue}
+            onChange={setSliderValue}
+            minLabel={birthdayLabel(profile.birthday)}
+            maxLabel="Today"
+            currentLabel={currentLabel}
+          />
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
-  errorText: { fontSize: fontSizes.md, color: colors.accent, textAlign: 'center' },
   greeting: {
     position: 'absolute',
     top: 56,
@@ -78,27 +128,27 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     backgroundColor: 'rgba(255,255,255,0.92)',
     borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
   },
   greetingText: {
-    fontSize: fontSizes.lg,
+    fontSize: fontSizes.md,
     fontWeight: '700',
     color: colors.primary,
   },
   fab: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 130,
     alignSelf: 'center',
     backgroundColor: colors.primary,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 28,
+    paddingHorizontal: 24,
+    paddingVertical: 13,
+    borderRadius: 26,
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -106,4 +156,15 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   fabText: { color: '#fff', fontSize: fontSizes.md, fontWeight: '600' },
+  timeline: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 8,
+  },
 });
